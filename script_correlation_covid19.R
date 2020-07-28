@@ -17,7 +17,7 @@ library(drugbankR)
 library(tidyverse)
 library(clipr)
 
-setwd("/home/ajperez/Nextcloud/coronavirus")
+setwd("./")
 
 # Parameters
 TARGET_GENE <- 0 # 0 for all  
@@ -389,47 +389,6 @@ next
         #              file = paste(new_folder, i, "-", str_replace_all(xw$Description[i], "/", "_"), ".tsv", sep=""))
         #}
         write.table(as.data.frame(xw), file = paste0(FOLDER, "/enrichment_WIKI.tsv"), quote = F, row.names = F, sep = "\t")
-      }
-      
-      ############
-      # DrugBank #
-      ############
-      #install.packages("remotes")
-      #remotes::install_github("yduan004/drugbankR")
-      
-      # genes
-      #filtered_expr_table_wo_SMN %>% filter(Gene.type == "protein_coding") %>% select(Genename)
-      cgenes <- expr_table %>% filter(Ensembl %in% genes) %>% select(Genename) %>% pull()
-      
-      # KEGG
-      #cgenes <- as.vector(unlist(expr_table %>% filter(Ensembl %in% xensembl) %>% select(Genename)))
-      
-      dtable <- queryDB(ids = dids, type = "getTargets", db_path = dv) %>% filter (t_gn_sym %in% cgenes)
-      
-      if (nrow(dtable) > 0) {
-        # Write files
-        #write_clip(dtable$t_Uni_id)
-        write.table(dtable, file = paste0(FOLDER, "/drugbank.tsv"), quote = T, row.names = F)
-        write.table(expr_table %>% filter(Genename %in% dtable$t_gn_sym) %>% select(Ensembl), 
-                    file = paste0(FOLDER, "/genes_drugs.txt"), quote = F, row.names = F, col.names = F, sep = "\t")
-        write.table(expr_table %>% filter(Genename %in% dtable$t_gn_sym) %>% select(Ensembl, Correlation, nexp_count), 
-                    file = paste0(FOLDER, "/genes_drugs_corr.tsv"), quote = F, row.names = F, col.names = F, sep = "\t")
-      
-        #drugs <- dtable %>% filter(t_Uni_id %in% c(dtable$t_Uni_id))
-        #print(drugs)
-        #drugs <- dtable %>% filter(t_Uni_id %in% "Q14376")
-        drugs <- dtable$q_db_id
-        fda <- queryDB(ids = drugs, type = "whichFDA", db_path = dv)
-        write.table(fda, file = paste0(FOLDER, "/drugbank_fda.tsv"), quote = F, row.names = F, sep = "\t")
-        next;
-        # Match with pathways
-        command <- paste0("grep -f ", FOLDER, "/", "genes_drugs.txt ", FOLDER, "/*/*")
-        rgrep <- system(command, intern = TRUE)
-        rgrep <- read.table(text = rgrep, sep = "/")
-        rgrep <- separate(data = rgrep, col = V4, into = c("a", "b"), sep = ":")
-        rgrep <- rgrep[,-c(1,2)]
-        names(rgrep) <- c("Source", "Annotation", "Ensembl")
-        write.table(rgrep, file = paste0(FOLDER, "/drugables_vs_annots.tsv"), quote = F, row.names = F, sep = "\t")
       }
     }
   }
