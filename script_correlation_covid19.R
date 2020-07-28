@@ -1,5 +1,6 @@
 # Correlations for searching drugs again SARS-CoV-2
-# AJPerez, march 2020
+# AJPerez, March 2020
+# Updated, July 2020
 
 library(ggplot2)
 library(reshape2)
@@ -17,22 +18,25 @@ library(tidyverse)
 library(clipr)
 
 setwd("/home/ajperez/Nextcloud/coronavirus")
-print(list.files(path = "expressions")) # expression matrices
 
 # Parameters
-TARGET_GENE <- 0 # 0 for all
-CORR_SIGN   <- 0 # 1=+, 2=-, 0=all
+TARGET_GENE <- 0 # 0 for all  
+CORR_SIGN   <- 2 # 1=+, 2=-, 0=all
 UPDOWN_SIGN <- 3 # 1=up, 2=down, 0=both, 3=off
 FC          <- 1 # Fold change threshold
+EXPRESSIONS <- "expressions/seeds/" # tr_itc
+OUT_FOLDER  <- "results_def/"
+
+print(list.files(path = EXPRESSIONS)) # expression matrices
 
 # Databases' constants
 dv <- "drugbank_5.1.5.db"
 dids <- queryDB(type = "getIDs", db_path = dv)
-ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl", host = "uswest.ensembl.org")
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")#, host = "uswest.ensembl.org")
 
 # Genes and correlations
 NEXP <- 0.9 # %ncols(expr_table)
-GUPO_array <- list.files(path = "expressions")
+GUPO_array <- list.files(path = EXPRESSIONS)
 #GUPO_array <- GUPO_array[31:length(GUPO_array)]
 #GUPO_array <- GUPO_array[c(19)] # <------------- REMAININGs ----------------
   if (TARGET_GENE != 0) {
@@ -76,7 +80,7 @@ for (GUPO in GUPO_array) {
 
       ############
       # Files
-      FILE <- paste0("./expressions/", GUPO, "/resultados.tsv")
+      FILE <- paste0(EXPRESSIONS, GUPO, "/resultados.tsv")
       header <- read.csv(FILE, sep = "\t", nrows = 2, header = FALSE)
       header <- rbind(header, t(c("", "", paste0("exp", seq(1, ncol(header)-2)))))
       expr_table <- read.csv(FILE, sep = "\t", skip = 2, header = FALSE)
@@ -139,7 +143,15 @@ for (GUPO in GUPO_array) {
                                                       nexp_count >= NEXP*length(ref_expr)) |
                                                       (CORR > 0 & Correlation >= CORR &
                                                       nexp_count >= NEXP*length(ref_expr)) |
-                                                      Genename == GENE) %>% select(- c(Correlation, nexp_count))
+                                                      Genename == GENE)
+      
+      filtered_expr_table <- expr_table %>% filter(Ensembl %in% readLines(paste0("gualberto/v3/output_genes/",
+                                                   GENE, "_selgenes_inverse_scores.csv_0.01")) | Genename == GENE) # Gualberto (direct/inverse)
+      #filtered_expr_table <- expr_table %>% filter(Ensembl %in% readLines(paste0("../galiciame/gualberto/smns/",
+      #                                             GENE, "_selgenes_direct.csv")) | Genename == GENE) # Gualberto (direct/inverse)
+      
+      filtered_expr_table_corr <- filtered_expr_table
+      filtered_expr_table %>% select(- c(Correlation, nexp_count))
       
       # Figure
       fig_expr_table <- melt(filtered_expr_table, id = c("Ensembl","Genename", "Gene.type"))
@@ -162,13 +174,13 @@ for (GUPO in GUPO_array) {
       print(p)
       
       # Folder  
-      FOLDER <- paste0("results/", GENE, "_", CORR, "_", NEXP, "_", UPDOWN , "_", FC, "_", ORG1)
+      FOLDER <- paste0(OUT_FOLDER, GENE, "_", CORR, "_", NEXP, "_", UPDOWN , "_", FC, "_", ORG1)
       if (!dir.exists(FOLDER)){
         dir.create(FOLDER)
       }
       
       # Save figure
-      pdf(paste0(FOLDER, "/correlation.pdf"), width=16, height=8, paper='special')
+      pdf(paste0(FOLDER, "/../", GENE, "_correlation.pdf"), width=16, height=8, paper='special')
       print(p)
       dev.off()
       
@@ -195,8 +207,14 @@ for (GUPO in GUPO_array) {
       
       if (nrow(filtered_expr_table_wo_SMN) == 0) { next }
       
+      write.table(filtered_expr_table_corr %>% filter(Gene.type == "protein_coding") %>% select(Ensembl, Genename, Correlation), 
+                  file = paste0(FOLDER, "/genes_correlations.tsv"), quote = F, col.names = F, row.names = F, sep = "\t")
+      
       write.table(filtered_expr_table_wo_SMN %>% filter(Gene.type == "protein_coding") %>% select(Ensembl), 
-                  file = paste0(FOLDER, "/genes.txt"), quote = F, col.names = F, row.names = F)
+                  file = paste0(FOLDER, "/genes.ensembl"), quote = F, col.names = F, row.names = F)
+      
+      write.table(filtered_expr_table_wo_SMN %>% filter(Gene.type == "protein_coding") %>% select(Genename), 
+                  file = paste0(FOLDER, "/genes.gn"), quote = F, col.names = F, row.names = F)
       
       write.table(filtered_expr_table_wo_SMN %>% group_by(Gene.type) %>%  summarise(count=n()), 
                   file = paste0(FOLDER, "/types.tsv"), quote = F, col.names = F, row.names = F, sep = "\t")
@@ -205,7 +223,7 @@ for (GUPO in GUPO_array) {
       ##############  
       # Enrichment #
       ##############
-      
+next      
       # Files
       file_bg <- paste0("../galiciame/biomart_", ORG1, "_go2_protein.tsv")
       Nodes <- 50 # number of processes to show
@@ -225,7 +243,7 @@ for (GUPO in GUPO_array) {
       
       # Iterate through the two ontologies
       for (ONT in c("BP", "CC")) {
-      
+      next
         # Create topGO object
         GOdata <- new("topGOdata", ontology = ONT, allGenes = compared_genes,
                     annot = annFUN.gene2GO, gene2GO = GOesByID)
@@ -302,63 +320,25 @@ for (GUPO in GUPO_array) {
       entrez <- getBM(attributes="entrezgene_id", filters = 'ensembl_gene_id', values = genes, mart = ensembl)
       entrez <- as.vector(unlist(entrez['entrezgene_id']))
       
-      #enrichKEGG(entrez, organism = "hsa", keyType = "ncbi-geneid", pvalueCutoff = 0.05, pAdjustMethod = "BH", universe, minGSSize = 10, 
-      #           maxGSSize = 500, qvalueCutoff = 0.2, use_internal_data = FALSE)
-      x = ""
-      x <- enrichKEGG(entrez, organism=ORG2, keyType="ncbi-geneid", pvalueCutoff = 0.05)
-      
-      if (exists("x") & nrow(x) > 4) {
-        b <- barplot(x, ylab = "KEGG pathways", xlab = "Number of genes", cex = 5, border = T) + 
-          ylab("Number of genes")
-          #  scale_fill_gradientn(name = "p_adjust", colours = myPalette(4), guide = guide_colourbar(reverse = TRUE))
-        print(b)
-        d <- dotplot(x, showCategory=30)
-        print(d)
-      
-        # Save figures
-        pdf(paste0(FOLDER, "/kegg_plot.pdf"), width=16, height=8, paper='special')
-        print(b)
-        dev.off()
-        pdf(paste0(FOLDER, "/kegg_dot.pdf"), width=16, height=8, paper='special')
-        print(d)
-        dev.off()
-      
-        # Go to KEGG pathway
-        #x$Description
-        #browseKEGG(x, x$ID[3]) # Go KEGG Pathway by web
-      
-        # Write data
-        #new_folder <- paste0(FOLDER, "/KEGG/")
-        #dir.create(new_folder)
-        #for (i in 1:nrow(x)) {
-        #  xgeneid <- unlist(strsplit(x$geneID[i], split="/"))
-        #  xensembl <- getBM(attributes="ensembl_gene_id", filters = 'entrezgene_id', values = xgeneid, mart = ensembl)
-        #  xensembl <- as.vector(unlist(xensembl['ensembl_gene_id']))
-        #  write.table(xensembl, quote = FALSE, sep = "\t", col.names = F, row.names = F,
-        #              file = paste(new_folder, i, "-", str_replace_all(x$Description[i], "/", "_"), ".tsv", sep=""))
-        #}
-        #https://www.kegg.jp/kegg-bin/show_pathway?hsa04540/3709
-        ktable <- as.data.frame(x)
-        ktable$URL <- paste0("https://www.kegg.jp/kegg-bin/show_pathway?", ktable$ID, "/", ktable$geneID)
-        write.table(ktable, file = paste0(FOLDER, "/enrichment_KEGG.tsv"), quote = F, row.names = F, sep = "\t")
-      }
-        
       ############
       # Reactome #
       ############
-      
       xr = ""
-      xr <- enrichPathway(gene = entrez, pvalueCutoff = 0.05, readable = T, organism = ORG1)
+      xr <- enrichPathway(gene = entrez, pvalueCutoff = 0.05, readable = T, organism = ORG1, pAdjustMethod = "fdr")
       
-      if (exists("xr") & nrow(xr) > 4) {
-        r <- barplot(xr, showCategory=8) + ylab("Number of genes")
-        #  scale_fill_gradientn(name = "p_adjust", colours = myPalette(4), guide = guide_colourbar(reverse = TRUE))
+      if (exists("xr") & nrow(xr) > 1) {
+        r <- dotplot(xr, showCategory = 15, font.size = 14)
+        #scale_fill_gradientn(name = "p_adjust", colours = myPalette(4), guide = guide_colourbar(reverse = TRUE))
         #print(r)
       
-        pdf(paste0(FOLDER, "/reactome_plot.pdf"), width=16, height=8, paper='special')
+        #pdf(paste0(FOLDER, "/../", GENE, ".pdf"), width=16, height=8, paper='special')
+        png(paste0(FOLDER, "/../", GENE, ".png"), width = 800, height = 600)
         print(r)
         dev.off()
       
+        #write.table(data.frame(xr$Description), quote = FALSE, col.names = F, row.names = F, file = paste0(FOLDER, "/../", GENE, ".txt"))
+        write.table(entrez, quote = FALSE, col.names = F, row.names = F, file = paste0(FOLDER, "/../", GENE, ".txt"))
+        
         # Write data
         #new_folder <- paste0(FOLDER, "/REACT/")
         #dir.create(new_folder)
@@ -371,7 +351,7 @@ for (GUPO in GUPO_array) {
         #}
         write.table(as.data.frame(xr), file = paste0(FOLDER, "/enrichment_REACTOME.tsv"), quote = F, row.names = F, sep = "\t")
       }
-        
+      #next
       ################
       # WikiPathways #
       ################
@@ -454,3 +434,4 @@ for (GUPO in GUPO_array) {
     }
   }
 }
+
